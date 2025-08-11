@@ -1,0 +1,53 @@
+{
+  "ModId": "gbfr.balance.levelsync",
+  "ModName": "Automatic Level Sync/Power Adjustment",
+  "ModAuthor": "Nenkai",
+  "ModVersion": "1.0.0",
+  "ModDescription": "Enables automatic level-syncing/power adjustment outside Quick Quest, useful for playing with players still progressing in the game.\nThis mod can be disabled and enabled in real-time by right-clicking and pressing 'Configure'.",
+  "ModDll": "gbfr.balance.levelsync.dll",
+  "ModIcon": "Preview.png",
+  "ModR2RManagedDll32": "x86/gbfr.balance.levelsync.dll",
+  "ModR2RManagedDll64": "x64/gbfr.balance.levelsync.dll",
+  "ModNativeDll32": "",
+  "ModNativeDll64": "",
+  "IsLibrary": false,
+  "ReleaseMetadataFileName": "gbfr.balance.levelsync.ReleaseMetadata.json",
+  "PluginData": {
+    "GitHubRelease": {
+      "UserName": "Nenkai",
+      "RepositoryName": "gbfr.balance.levelsync",
+      "UseReleaseTag": true,
+      "AssetFileName": "Mod.zip"
+    },
+    "GitHubDependencies": {
+      "IdToConfigMap": {
+        "Reloaded.Memory.SigScan.ReloadedII": {
+          "Config": {
+            "UserName": "Reloaded-Project",
+            "RepositoryName": "Reloaded.Memory.SigScan",
+            "UseReleaseTag": false,
+            "AssetFileName": "Mod.zip"
+          },
+          "ReleaseMetadataName": "Reloaded.Memory.SigScan.ReloadedII.ReleaseMetadata.json"
+        },
+        "reloaded.sharedlib.hooks": {
+          "Config": {
+            "UserName": "Sewer56",
+            "RepositoryName": "Reloaded.SharedLib.Hooks.ReloadedII",
+            "UseReleaseTag": true,
+            "AssetFileName": "reloaded.sharedlib.hooks.zip"
+          },
+          "ReleaseMetadataName": "Sewer56.Update.ReleaseMetadata.json"
+        }
+      }
+    }
+  },
+  "IsUniversalMod": false,
+  "ModDependencies": [ "reloaded.sharedlib.hooks" ],
+  "OptionalDependencies": [
+    "Reloaded.Memory.SigScan.ReloadedII",
+    "reloaded.sharedlib.hooks"
+  ],
+  "SupportedAppId": [ "granblue_fantasy_relink.exe" ],
+  "ProjectUrl": ""
+}
