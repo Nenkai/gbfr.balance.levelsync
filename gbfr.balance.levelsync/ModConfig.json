@@ -2,7 +2,7 @@
   "ModId": "gbfr.balance.levelsync",
   "ModName": "Automatic Level Sync/Power Adjustment",
   "ModAuthor": "Nenkai",
-  "ModVersion": "1.0.0",
+  "ModVersion": "1.0.1",
   "ModDescription": "Enables automatic level-syncing/power adjustment outside Quick Quest, useful for playing with players still progressing in the game.\nThis mod can be disabled and enabled in real-time by right-clicking and pressing 'Configure'.",
   "ModDll": "gbfr.balance.levelsync.dll",
   "ModIcon": "Preview.png",
