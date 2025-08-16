@@ -43,11 +43,11 @@
     }
   },
   "IsUniversalMod": false,
-  "ModDependencies": [ "reloaded.sharedlib.hooks" ],
-  "OptionalDependencies": [
+  "ModDependencies": [
     "Reloaded.Memory.SigScan.ReloadedII",
     "reloaded.sharedlib.hooks"
   ],
+  "OptionalDependencies": [],
   "SupportedAppId": [ "granblue_fantasy_relink.exe" ],
   "ProjectUrl": ""
 }
