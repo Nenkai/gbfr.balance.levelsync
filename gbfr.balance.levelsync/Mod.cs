@@ -1,11 +1,16 @@
 ﻿using gbfr.balance.levelsync.Configuration;
 using gbfr.balance.levelsync.Template;
 
+using gbfrelink.utility.manager.Interfaces;
+
+using NenTools.Reloaded.ScanManager.Interfaces;
+
 using Reloaded.Hooks.ReloadedII.Interfaces;
 using Reloaded.Memory.Interfaces;
 using Reloaded.Memory.SigScan.ReloadedII.Interfaces;
 using Reloaded.Mod.Interfaces;
 
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -47,10 +52,11 @@ public class Mod : ModBase // <= Do not Remove.
     /// </summary>
     private readonly IModConfig _modConfig;
 
-    private static IStartupScanner? _startupScanner = null!;
+    private readonly IStartupScanner? _startupScanner;
 
-    private nint _imageBase;
-    private nuint _quickQuestCheckAddr;
+    private readonly IUserDefinedParams _userDefinedParams;
+
+    private nint _quickQuestCheckAddr;
 
     private List<byte> _checkOriginalBytes = [];
     private bool _saveOriginalBytes = true;
@@ -71,32 +77,61 @@ public class Mod : ModBase // <= Do not Remove.
         var startupScannerController = _modLoader.GetController<IStartupScanner>();
         if (startupScannerController == null || !startupScannerController.TryGetTarget(out _startupScanner))
         {
+            _logger.WriteLine($"[{_modConfig.ModId}] IStartupScanner not found?  Rich presence will not load!", System.Drawing.Color.Red);
             return;
         }
 
-        _imageBase = Process.GetCurrentProcess().MainModule!.BaseAddress;
-        var memory = Reloaded.Memory.Memory.Instance;
+        var userDefinedParamsRef = _modLoader.GetController<IUserDefinedParams>();
+        if (startupScannerController == null || !userDefinedParamsRef.TryGetTarget(out _userDefinedParams))
+        {
+            _logger.WriteLine($"[{_modConfig.ModId}] IUserDefinedParams not found?  Rich presence will not load!", System.Drawing.Color.Red);
+            return;
+        }
+
+        var scanManagerRef = _modLoader.GetController<IScanManager>();
+        if (startupScannerController == null || !scanManagerRef.TryGetTarget(out IScanManager? scanManager))
+        {
+            _logger.WriteLine($"[{_modConfig.ModId}] IScanManager not found?  Rich presence will not load!", System.Drawing.Color.Red);
+            return;
+        }
+        scanManager.InitializeScans(Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "Signatures"), _modConfig.ModId);
 
         if (!_configuration.EnableLevelSync)
         {
             _logger.Write($"[{_modConfig.ModId}] Power adjustment is currently disabled in settings.\n", _logger.ColorYellow);
         }
 
-        SigScan("41 80 B9 ?? ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? 48 8B 77", "", address =>
+        string signatureGroup = _userDefinedParams.IsEndlessRagnarok() ? "granblue_fantasy_relink_er" : "granblue_fantasy_relink";
+        scanManager.AddScan("QuickQuestCheckAddr", signatureGroup, address =>
         {
             _quickQuestCheckAddr = address;
             Apply(_configuration.EnableLevelSync);
         });
     }
 
-    public void Apply(bool state)
+    public unsafe void Apply(bool state)
     {
-        nuint addr = _quickQuestCheckAddr;
+        nint addr = _quickQuestCheckAddr;
         // Remove quick quest check
         if (state)
         {
-            WriteBytes(ref addr, [0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90]); // 41 80 B9 84 3F 09 00 00 - "cmp byte ptr [r9+93F84h], 0" -> nop - r9 is quest system/manager, 0x93F84 is "IsQuickQuest"
-            WriteBytes(ref addr, [0x90, 0x90, 0x90, 0x90, 0x90, 0x90]);             // 0F 84 4F DC FF FF       - "jz      loc_7FF68DB319A2"    -> nop
+            if (_userDefinedParams.IsEndlessRagnarok())
+            {
+                int fieldOffset = *(int*)(addr + 3);
+                Span<byte> bytes = stackalloc byte[7];
+                bytes[0] = 0xC6;
+                bytes[1] = 0x83;
+                BinaryPrimitives.WriteInt32LittleEndian(bytes[2..], fieldOffset);
+                bytes[6] = 1;
+                WriteBytes(ref addr, bytes);       // 0F 94 83 ?? ?? ?? ?? 48 8B 35 - "setz byte ptr [rbx+63A84h]" -> mov byte ptr [rbx+63A84h], 1 - r9 is quest system/manager, 0x93F84 is "IsQuickQuest"
+            }
+            else
+            {
+                // Can't use that in ER. Crashes.
+                WriteBytes(ref addr, [0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90]); // 41 80 B9 84 3F 09 00 00 - "cmp byte ptr [r9+93F84h], 0" -> nop - r9 is quest system/manager, 0x93F84 is "IsQuickQuest"
+                WriteBytes(ref addr, [0x90, 0x90, 0x90, 0x90, 0x90, 0x90]);             // 0F 84 4F DC FF FF       - "jz      loc_7FF68DB319A2"    -> nop
+            }
+
             _saveOriginalBytes = false;
             _logger.Write($"[{_modConfig.ModId}] Power adjustment is now applied to all quests.\n", _logger.ColorGreen);
         }
@@ -105,33 +140,22 @@ public class Mod : ModBase // <= Do not Remove.
             if (_checkOriginalBytes.Count == 0)
                 return;
 
-            Reloaded.Memory.Memory.Instance.SafeWrite(addr, CollectionsMarshal.AsSpan(_checkOriginalBytes));
+            Reloaded.Memory.Memory.Instance.SafeWrite((nuint)addr, CollectionsMarshal.AsSpan(_checkOriginalBytes));
             _logger.Write($"[{_modConfig.ModId}] Power adjustment is now only available in Quick Quest (default).\n", _logger.ColorGreen);
         }
     }
-    private void SigScan(string pattern, string name, Action<nuint> action)
-    {
-        _startupScanner?.AddMainModuleScan(pattern, result =>
-        {
-            if (!result.Found)
-            {
-                return;
-            }
-            action((nuint)(_imageBase + result.Offset));
-        });
-    }
 
-    private void WriteBytes(ref nuint currentAddress, Span<byte> bytes)
+    private void WriteBytes(ref nint currentAddress, Span<byte> bytes)
     {
         if (_saveOriginalBytes)
         {
             byte[] orig = new byte[bytes.Length];
-            Reloaded.Memory.Memory.Instance.SafeRead(currentAddress, orig);
+            Reloaded.Memory.Memory.Instance.SafeRead((nuint)currentAddress, orig);
             _checkOriginalBytes.AddRange(orig);
         }
 
-        Reloaded.Memory.Memory.Instance.SafeWrite(currentAddress, bytes);
-        currentAddress += (uint)bytes.Length;
+        Reloaded.Memory.Memory.Instance.SafeWrite((nuint)currentAddress, bytes);
+        currentAddress += bytes.Length;
     }
 
     #region Standard Overrides

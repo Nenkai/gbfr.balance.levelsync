@@ -2,7 +2,7 @@
   "ModId": "gbfr.balance.levelsync",
   "ModName": "Automatic Level Sync/Power Adjustment",
   "ModAuthor": "Nenkai",
-  "ModVersion": "1.0.1",
+  "ModVersion": "1.1.0",
   "ModDescription": "Enables automatic level-syncing/power adjustment outside Quick Quest, useful for playing with players still progressing in the game.\nThis mod can be disabled and enabled in real-time by right-clicking and pressing 'Configure'.",
   "ModDll": "gbfr.balance.levelsync.dll",
   "ModIcon": "Preview.png",
@@ -45,9 +45,13 @@
   "IsUniversalMod": false,
   "ModDependencies": [
     "Reloaded.Memory.SigScan.ReloadedII",
-    "reloaded.sharedlib.hooks"
+    "reloaded.sharedlib.hooks",
+    "gbfrelink.utility.manager"
   ],
   "OptionalDependencies": [],
-  "SupportedAppId": [ "granblue_fantasy_relink.exe" ],
+  "SupportedAppId": [
+    "granblue_fantasy_relink.exe",
+    "granblue_fantasy_relink_endless_ragnarok_demo.exe"
+  ],
   "ProjectUrl": ""
 }

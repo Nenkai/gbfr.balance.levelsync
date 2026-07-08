@@ -40,7 +40,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="gbfrelink.utility.manager.Interfaces" Version="1.1.0" />
     <PackageReference Include="Microsoft.NET.ILLink.Tasks" Version="9.0.3" />
+    <PackageReference Include="NenTools.Reloaded.ScanManager.Interfaces" Version="1.0.0" />
 	<PackageReference Include="Reloaded.Memory" Version="9.4.1" />
 	<PackageReference Include="Reloaded.Memory.Sigscan" Version="3.1.8" />
 	<PackageReference Include="Reloaded.Memory.SigScan.ReloadedII.Interfaces" Version="1.2.0" />
@@ -49,7 +51,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\gbfrelink.utility.manager\gbfrelink.utility.manager.Interfaces\gbfrelink.utility.manager.Interfaces.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Preview.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Signatures\granblue_fantasy_relink.ini">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Signatures\granblue_fantasy_relink_er.ini">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
