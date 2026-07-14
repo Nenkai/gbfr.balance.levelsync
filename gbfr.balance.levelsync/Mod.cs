@@ -1,11 +1,14 @@
 ﻿using gbfr.balance.levelsync.Configuration;
 using gbfr.balance.levelsync.Template;
+using gbfr.balance.levelsync.Template.Configuration;
 
 using gbfrelink.utility.manager.Interfaces;
 
 using NenTools.Reloaded.ScanManager.Interfaces;
 
-using Reloaded.Hooks.ReloadedII.Interfaces;
+using Reloaded.Hooks.Definitions;
+using Reloaded.Hooks.Definitions.Enums;
+
 using Reloaded.Memory.Interfaces;
 using Reloaded.Memory.SigScan.ReloadedII.Interfaces;
 using Reloaded.Mod.Interfaces;
@@ -57,9 +60,16 @@ public class Mod : ModBase // <= Do not Remove.
     private readonly IUserDefinedParams _userDefinedParams;
 
     private nint _quickQuestCheckAddr;
+    private nint _giveQuickQuestRewardCheckAddr;
 
-    private List<byte> _checkOriginalBytes = [];
+    private List<byte> _quickQuestCheckOriginalBytes = [];
+    private List<byte> _quickQuestRewardCheckOriginalBytes = [];
+
     private bool _saveOriginalBytes = true;
+
+    private static IAsmHook ASMHOOK_SetQuickQuestOverride;
+    private delegate void CheckAndSetQuickQuestState(nint value);
+    private static IReverseWrapper<CheckAndSetQuickQuestState> RW_CheckAndSetQuickQuestState;
 
     public Mod(ModContext context)
     {
@@ -107,16 +117,97 @@ public class Mod : ModBase // <= Do not Remove.
             _quickQuestCheckAddr = address;
             Apply(_configuration.EnableLevelSync);
         });
+
+        if (_userDefinedParams.IsEndlessRagnarok())
+        {
+            // We used to simply force the path that sets quick quest state on a character.
+            // In ER it didn't work anymore, the game would iterate through a map and an element was nullptr, causing a crash.
+
+            // Our new method is that we actually give the quest the quick quest flag.
+            // It does mean we have to make sure not to give quick quest rewards
+
+            // First, we hook an instruction that lets us determine if quick quest was intended
+            // (a bit of code that does QuestSystem->IsQuickQuest == QuestId == 0xF00000)
+
+            scanManager.AddScan("QuickQuestCheckCondAddr", signatureGroup, address =>
+            {
+                string[] initialFunction =
+                {
+                    $"use64",
+
+                    "push rax",     // We need EAX (quest id)
+                    $"{HookUtils.PushCallerRegistersX64}",
+                    "mov ecx, eax", // Pass it as 1st argument into our function
+
+                    // Call (4 reg + rax)
+                    "sub rsp, 0x28",
+                    $"{_hooks!.Utilities.GetAbsoluteCallMnemonics(SetQuickQuestState, out RW_CheckAndSetQuickQuestState)}",
+                    "add rsp, 0x28",
+
+                    $"{HookUtils.PopCallerRegistersX64}",
+                    "pop rax",       // Restore
+                };
+
+                ASMHOOK_SetQuickQuestOverride = _hooks!.CreateAsmHook(initialFunction, address, new AsmHookOptions()
+                {
+                    Behaviour = AsmHookBehaviour.ExecuteFirst,
+                    PreferRelativeJump = true, // <- This is the only way I could make it work in Endless Ragnarok
+                    MaxOpcodeSize = 5,         // <- combined with this
+                }).Activate();
+            });
+
+            // Next, we find the instruction that does the check for giving a reward
+            scanManager.AddScan("GiveQuickQuestRewardCheckAddr", signatureGroup, address =>
+            {
+                _giveQuickQuestRewardCheckAddr = address;
+            });
+        }
+    }
+
+    public void SetQuickQuestState(nint qId)
+    {
+        // Remove quick quest reward check (RW_SHUFFLE_QR6_*) if qid is not 0xF00000 (normal behavior check) and if we are
+
+        // (cache original bytes first)
+        if (_quickQuestRewardCheckOriginalBytes.Count == 0)
+        {
+            byte[] origBytes = new byte[6];
+            Reloaded.Memory.Memory.Instance.SafeRead((nuint)_giveQuickQuestRewardCheckAddr, origBytes);
+            _quickQuestRewardCheckOriginalBytes.AddRange(origBytes);
+        }
+
+        if (qId != 0xF00000 && _configuration.EnableLevelSync) // Is quick quest not intended & we forcing it? 
+        {
+            // Change jz to jmp to skip reward check, then.
+
+            // cmp     byte ptr [r9+63A84h], 0
+            // jz loc_7FF6A20D04F0 <-- we are changing that
+
+            int rel = BinaryPrimitives.ReadInt32LittleEndian(CollectionsMarshal.AsSpan(_quickQuestRewardCheckOriginalBytes)[2..]);
+            byte[] bytes = new byte[5 + 1];
+            bytes[0] = 0x90;                                                                  // nop
+            bytes[1] = 0xE9; BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(2..), rel); // jmp <location>
+            
+            Reloaded.Memory.Memory.Instance.SafeWrite((nuint)_giveQuickQuestRewardCheckAddr, bytes);
+        }
+        else
+        {
+            // Intended, restore check.
+            Reloaded.Memory.Memory.Instance.SafeWrite((nuint)_giveQuickQuestRewardCheckAddr, _quickQuestRewardCheckOriginalBytes.ToArray());
+        }
     }
 
     public unsafe void Apply(bool state)
     {
         nint addr = _quickQuestCheckAddr;
+
         // Remove quick quest check
         if (state)
         {
             if (_userDefinedParams.IsEndlessRagnarok())
             {
+                // Can't use old method in ER. Crashes, mentioned earlier
+                // So we force set the quick quest property to true
                 int fieldOffset = *(int*)(addr + 3);
                 Span<byte> bytes = stackalloc byte[7];
                 bytes[0] = 0xC6;
@@ -127,7 +218,7 @@ public class Mod : ModBase // <= Do not Remove.
             }
             else
             {
-                // Can't use that in ER. Crashes.
+                // Simply force the "set this character quick quest state" path
                 WriteBytes(ref addr, [0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90]); // 41 80 B9 84 3F 09 00 00 - "cmp byte ptr [r9+93F84h], 0" -> nop - r9 is quest system/manager, 0x93F84 is "IsQuickQuest"
                 WriteBytes(ref addr, [0x90, 0x90, 0x90, 0x90, 0x90, 0x90]);             // 0F 84 4F DC FF FF       - "jz      loc_7FF68DB319A2"    -> nop
             }
@@ -137,10 +228,10 @@ public class Mod : ModBase // <= Do not Remove.
         }
         else
         {
-            if (_checkOriginalBytes.Count == 0)
+            if (_quickQuestCheckOriginalBytes.Count == 0)
                 return;
 
-            Reloaded.Memory.Memory.Instance.SafeWrite((nuint)addr, CollectionsMarshal.AsSpan(_checkOriginalBytes));
+            Reloaded.Memory.Memory.Instance.SafeWrite((nuint)addr, CollectionsMarshal.AsSpan(_quickQuestCheckOriginalBytes));
             _logger.Write($"[{_modConfig.ModId}] Power adjustment is now only available in Quick Quest (default).\n", _logger.ColorGreen);
         }
     }
@@ -151,7 +242,7 @@ public class Mod : ModBase // <= Do not Remove.
         {
             byte[] orig = new byte[bytes.Length];
             Reloaded.Memory.Memory.Instance.SafeRead((nuint)currentAddress, orig);
-            _checkOriginalBytes.AddRange(orig);
+            _quickQuestCheckOriginalBytes.AddRange(orig);
         }
 
         Reloaded.Memory.Memory.Instance.SafeWrite((nuint)currentAddress, bytes);
